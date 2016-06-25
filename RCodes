@@ -1,0 +1,545 @@
+###########################################################################################
+# Author: Nick Syring
+# Contact: nasyring@ncsu.edu, https://github.com/nasyring
+# Title: R codes for Posterior inference on the boundary of a noisy image via a Gibbs model
+###########################################################################################
+
+# Directions for use:
+#				
+#		1. Install and load the packages below: splines, plotrix, BayesBD.
+#		   Note, works with the 0.1 version of BayesBD by Meng Li, xylimeng@gmail.com. 
+#		2. Load the functions triangle2 and image.boundary into R.
+#	  3. Examples from the paper are ready to run below, after the code for the 
+#		   image.boundary function.
+#
+
+
+# Necessary packages 
+library(splines)
+library(plotrix)
+library(BayesBD)
+
+
+# Function for trianglular boundaries
+
+triangle2 = function(S){
+	triangle.scalar <- function(theta, h) {
+	r=0
+        if (any(theta >= 0 & theta <  pi/2, theta>= 11*pi/6 & theta < 2*pi)) {
+	      h = S*sin(pi/3)
+            k = S*cos(pi/3)
+		hstar = k*tan(pi/6)
+		hh = h - hstar
+		r = hh / ((sin(theta) + (h/k)*cos(theta)))
+        }
+        if (theta>= pi/2 & theta < 7*pi/6) {
+            theta = pi - theta	
+	      h = S*sin(pi/3)
+		k = S*cos(pi/3)
+		hstar = k*tan(pi/6)
+		hh = h - hstar
+		r = hh / ((sin(theta) + (h/k)*cos(theta)))
+        }
+        if (theta>= 7*pi/6 & theta < 3*pi/2) {
+           a = 3*pi/2-theta
+           h = S*sin(pi/3)
+		k = S*cos(pi/3)
+		hstar = k*tan(pi/6)
+	     r = (hstar)/cos(a) 
+        }
+        if (theta>=3*pi/2 & theta< 11*pi/6) {
+           a = theta-3*pi/2
+           h = S*sin(pi/3)
+			k = S*cos(pi/3)
+		hstar = k*tan(pi/6)
+	     r = (hstar)/cos(a) 
+        }
+        return(r)
+    }
+    ret = function(theta) c(sapply(theta, function(theta) triangle.scalar(theta, 
+        h)))
+    return(ret)	
+}
+
+
+
+
+# Main function for producing posterior samples and plotting boundary estimates
+
+# Special directions: gamma.star can only take values "ellipse" or "triangle";
+# density.in and density.out can only take values "bernoulli", "normal", "t",
+# or "mixnorm", corresponding to examples in the paper; and density.in and
+# density.out must either both be "bernoulli" or neither can be "bernoulli", 
+# there can be no mixing of binary and continuous images.
+
+image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", density.in = "normal", density.out = "normal", pi.in = .5, 
+		     pi.out = .2, mu.in = 4, mu.out = 1, sd.in = 1.5, sd.out = 1, norm.mix.in = c(.6,2,1.5,1,1), 
+		     norm.mix.out = c(1,1,1,1,1), df.in = 3, df.out = 3, ncp.in = 1, ncp.out=0){
+
+	# The true boundary is either an ellipse or a triangle
+
+	if(gamma.star == "ellipse"){
+		gamma.fun = ellipse(a = 0.35, b = 0.25, r0 = .1*(2^.5), theta0 = pi/4, phi = pi/3)
+	}else if (gamma.star == "triangle"){
+		gamma.fun = triangle2(0.5)
+	}else
+		return("Error in boundary shape; gamma.star can only have value 'ellipse' or 'triangle'.")
+
+	# The locations of observed pixels are jitteredly random uniform
+
+	obs <- matrix(NA, n.obs, n.obs)
+      x.axis = (col(obs) - 1)/n.obs + 1/(2 * n.obs) + runif(n.obs^2, min = -1/(2 * n.obs), max = 1/(2 * n.obs))
+      y.axis = (n.obs - row(obs))/n.obs + 1/(2 * n.obs) + runif(n.obs^2, min = -1/(2 * n.obs), max = 1/(2 * n.obs))    
+      r.obs = sqrt((x.axis - 0.5)^2 + (y.axis - 0.5)^2)
+      theta.obs <- atan2(y.axis - 1/2, x.axis - 1/2)
+      theta.obs[theta.obs < 0] = theta.obs[theta.obs < 0] + 2 * pi
+      obsLabel = (r.obs < gamma.fun(theta.obs))
+      n.In = sum(obsLabel)
+      n.Out = sum(!obsLabel)
+
+	# The intensities are generated from the density.in and density.out distributions, and relevant parameters
+
+	if(density.in == "normal"){
+      	obs[obsLabel] = rnorm(n.In,mean = mu.in,sd = sd.in)
+	}else if (density.in == "bernoulli"){
+		obs[obsLabel] = rbinom(n.In,size = 1,prob = pi.in)
+	}else if (density.in == "t"){
+		obs[obsLabel] = rt(n.In,df = df.in,ncp = ncp.in)
+	}else if (density.in == "mixnorm"){
+		norm1 = rnorm(n.obs^2, mean = norm.mix.in[2], sd = norm.mix.in[3])
+		norm2 = rnorm(n.obs^2, mean = norm.mix.in[4], sd = norm.mix.in[5])
+		bern = rbinom(n.obs^2, size = 1, prob = norm.mix.in[1])
+		obs[obsLabel] = ifelse(bern == 1, norm1, norm2)
+	} else
+		return("Error in density.in; can only take values 'normal', 'bernoulli', 't', or 'mixnorm'.")
+	if(density.out == "normal"){
+      	obs[!obsLabel] = rnorm(n.Out,mean = mu.out,sd = sd.out)
+	}else if (density.out == "bernoulli"){
+		obs[!obsLabel] = rbinom(n.Out,size = 1,prob = pi.out)
+	}else if (density.out == "t"){
+		obs[!obsLabel] = rt(n.Out,df = df.out,ncp = ncp.out)
+	}else if (density.out == "mixnorm"){
+		norm1 = rnorm(n.obs^2, mean = norm.mix.out[2], sd = norm.mix.out[3])
+		norm2 = rnorm(n.obs^2, mean = norm.mix.out[4], sd = norm.mix.out[5])
+		bern = rbinom(n.obs^2, size = 1, prob = norm.mix.out[1])
+		obs[!obsLabel] = ifelse(bern == 1, norm1, norm2)
+	} else
+		return("Error in density.out; can only take values 'normal', 'bernoulli', 't', or 'mixnorm'.")
+      
+	X = as.vector(r.obs)
+	Z = as.vector(theta.obs)
+	Y = as.vector(obs)
+
+	# A b-spline is used to model the parametrized boundary
+	
+	p.mcid = function(z,knots,betas){ # beta should be cardinality of knots minus four
+	des = t(splineDesign(knots, z, outer.ok=FALSE))
+	val = matrix(betas,1,length(betas))%*%des
+	return(val)}
+
+
+
+	# Determining loss function parameters (c,k,z)
+
+	if(all(density.in == "bernoulli", density.out == "bernoulli")){
+		k=1
+		J = 18# number of knots
+		inner_knots = c(0, 0.5711987, 1.1423973, 1.7135960, 2.2847947, 2.8559933, 3.4271920, 3.9983907, 4.5695893, 5.1407880, 5.7119866,2*pi)
+		outer_knots = c(-2,-1,-.5,2*pi+.5,2*pi+1, 2*pi+2) #fix an additional knot
+		knots = c(outer_knots[1:3],inner_knots, outer_knots[4:6])
+		r_knots = c(knots[1],knots[2], knots[4:J])
+		loss <- function(betas){
+			l = k*sum(as.vector(ifelse(Y==1,1,0))*as.vector(ifelse(X>p.mcid(Z,knots,betas),1,0))) + sum(as.vector(ifelse(Y == 0,1,0))*as.vector(ifelse(X<p.mcid(Z,knots,betas),1,0))) 
+			return(l)
+		}  
+		opter = constrOptim(matrix(rep(.35,14),14,1), loss,grad = NULL, ui=diag(1,14,14), ci=0)$par
+		solver = function(fix_beta){
+			a = p.mcid(0,knots,c(fix_beta,as.vector(opter[2:(J-4)])))
+			return(a-b)
+		}
+		b = p.mcid(2*pi,knots,as.vector(opter))
+		fix_beta = uniroot(solver, c(-1000000,1000000),tol = 0.0001)$root
+		betas = c(fix_beta, as.vector(opter[2:(J-4)]))
+		opt.r = p.mcid(Z,knots,betas)
+		class = (X <= opt.r)
+		p_z = sum(ifelse(Y==1,1,0)*class)/sum(class)
+		pc_z = sum(ifelse(Y==1,1,0)*(!class))/sum(!class)
+		res = c(1, pc_z, p_z)
+		z.final = res[1]
+		pc_z = res[2]
+		p_z = res[3]
+		k.final = (2/(p_z+pc_z)) - 1
+		loss = function(Z,X,Y,knots,betas){
+			k.final*sum(as.vector(ifelse(Y==1,1,0))*as.vector(ifelse(X>p.mcid(Z,knots,betas),1,0))) + sum(as.vector(ifelse(Y == 0,1,0))*as.vector(ifelse(X<=p.mcid(Z,knots,betas),1,0))) #empirical choices
+		}   
+
+	} else if (all(density.in != "bernoulli", density.out != "bernoulli")){
+		sort_Y = sort(Y)
+		res = matrix(NA, 19, 3)
+		c = 1
+		for(a in 1:19){
+			z = sort_Y[(a/20)*(n.obs^2)]
+			k=(a/20)/(1-(a/20))
+			J = 18# number of knots
+			inner_knots = c(0, 0.5711987, 1.1423973, 1.7135960, 2.2847947, 2.8559933, 3.4271920, 3.9983907, 4.5695893, 5.1407880, 5.7119866,2*pi)
+			outer_knots = c(-2,-1,-.5,2*pi+.5,2*pi+1, 2*pi+2) #fix an additional knot
+			knots = c(outer_knots[1:3],inner_knots, outer_knots[4:6])
+			r_knots = c(knots[1],knots[2], knots[4:J])
+			loss <- function(betas){
+				l = k*sum(as.vector(ifelse(Y>z,1,0))*as.vector(ifelse(X>p.mcid(Z,knots,betas),1,0))) + c*sum(as.vector(ifelse(Y <= z,1,0))*as.vector(ifelse(X<p.mcid(Z,knots,betas),1,0))) 
+				return(l)
+			}  
+			opter = constrOptim(matrix(rep(.35,14),14,1), loss,grad = NULL, ui=diag(1,14,14), ci=0)$par
+			b = p.mcid(2*pi,knots,as.vector(opter))
+			solver = function(fix_beta){
+				a = p.mcid(0,knots,c(fix_beta,as.vector(opter[2:(J-4)])))
+				return(a-b)
+			}
+			fix_beta = uniroot(solver, c(-1000000,1000000),tol = 0.0001)$root
+			betas = c(fix_beta, as.vector(opter[2:(J-4)]))
+			opt.r = p.mcid(Z,knots,betas)
+			class = (X <= opt.r)
+			F_z = sum(ifelse(Y<=z,1,0)*class)/sum(class)
+			Fc_z = sum(ifelse(Y<=z,1,0)*(!class))/sum(!class)
+			res[a,] = c(z, Fc_z, F_z)
+			}
+		mam = max(res[,2]-res[,3])
+		max_index = which(res[,2]-res[,3]==mam)
+		z.final = res[max_index,1]
+		Fc_z = res[max_index,2]
+		F_z = res[max_index,3]
+		c.final = log(Fc_z / F_z)
+		k.final = log((1-F_z)/(1-F_z*exp(c.final)))
+		loss = function(Z,X,Y,knots,betas){
+			k.final*sum(as.vector(ifelse(Y>z.final,1,0))*as.vector(ifelse(X>p.mcid(Z,knots,betas),1,0))) + c.final*sum(as.vector(ifelse(Y <= z.final,1,0))*as.vector(ifelse(X<=p.mcid(Z,knots,betas),1,0))) #empirical choices
+		}   
+	} else
+		return("Errors in density.in and density.out.  Make sure you do not have one 'bernoulli' and one not 'bernoulli'.")
+
+	# Ratio of losses for different parameters, used in MCMC sampling
+	
+	lr_func <- function(X,Y,Z,knots1,betas1,knots2,betas2,w){
+		l1 = loss(Z,X,Y,knots1, betas1) 
+		l2 = loss(Z,X,Y,knots2, betas2)
+		lr = exp(-w*(l1-l2))*prod(dexp(betas1[2:length(betas1)], 10))/prod(dexp(betas2[2:length(betas2)], 10))
+		return(lr)
+	}
+
+	# Metropolis Hastings steps for each component of beta
+
+	mh_beta_i <- function(j, dprop, rprop, N=1, B=1, X,Y,Z,knots,betas,w) {
+ 	   beta_prop = betas
+ 	   u <- rprop(betas[j])
+ 	   beta_prop[j] = u
+  	  r <- log(lr_func(X,Y,Z,knots,beta_prop,knots,betas,w=1)) + log(dprop(beta_prop[j] , u)) - log(dprop(u, beta_prop[j]))
+  	  R <- min(exp(r), 1)
+  	  if(runif(1) <= R) {
+		betas = beta_prop
+    	  } 
+	  return(betas[j])
+	}
+
+	# MH proposal distribution
+	dprop = function(x,theta){
+		return(dnorm(x, mean = theta,sd = .1))
+	}
+
+	rprop = function(theta){
+		return(rnorm(1,mean = theta, sd = .1))
+	}
+
+
+	#Looping rx Sweeps through the RJ-MCMC sampler
+	rx = n.MCMC + n.burn
+	J_results = matrix(0,rx,1)
+	knots_results = matrix(0,rx,40)
+	betas_results = matrix(0,rx,36) 
+
+	# Construction of an RJ-MCMC Sweep
+
+	# Initial parameter values
+	
+	solver = function(fix_beta){
+			a = p.mcid(0,knots,c(fix_beta,r_betas))
+			return(a-b)
+		}
+	J = 18# number of knots
+	inner_knots = c(0, 0.5711987, 1.1423973, 1.7135960, 2.2847947, 2.8559933, 3.4271920, 3.9983907, 4.5695893, 5.1407880, 5.7119866,2*pi)
+	outer_knots = c(-2,-1,-.5,2*pi+.5,2*pi+1, 2*pi+2) #fix an additional knot
+	knots = c(outer_knots[1:3],inner_knots, outer_knots[4:6])
+	r_knots = c(knots[1],knots[2], knots[4:J])
+      betas = rep(.2,14)
+	r_betas = rep(.2,13)
+	b = p.mcid(2*pi,r_knots,r_betas)
+	fix_beta = uniroot(solver, c(-1000000,1000000),tol = 0.0001)$root
+	betas = c(fix_beta, r_betas)
+	bir = 0
+	dea = 0
+	rel = 0		
+
+	for(kx in 1:rx){
+
+	# Metropolis-within Gibbs updates to Beta
+	
+	betas.new = matrix(0,J-5,1)
+	for(i in 1:(J-5)){
+		betas.new[i,1] = mh_beta_i( i+1, dprop, rprop, 1, 1, X,Y,Z,knots,betas,w=1)
+	}
+	r_betas = betas.new
+	r_knots = c(knots[1],knots[2], knots[4:J])
+	b = p.mcid(2*pi,r_knots,r_betas)
+	fix_beta = uniroot(solver, c(-1000000,1000000),tol = 0.0001)$root
+	betas = c(fix_beta, r_betas)
+
+	# Birth, Death, and Relocate moves
+
+	# Use a Poisson prior for J with mean of 20
+	b = .5*min(1, dpois(J+1,20)/dpois(J,20))
+	d = .5*min(1, dpois(J-1,20)/dpois(J,20))
+	r = max(1-b-d,0)
+	move = rmultinom(1,1,c(b,d,r))
+
+	# Birth
+			if(move[1] == 1){
+				
+				#determine location of new node and reset beta
+				j.star = round(runif(1)*(J-6)+3.5) 
+				knot.star = min(max(rnorm(1,knots[j.star],1/J),0), 2*pi)
+				u.rand = runif(1,0,0.1)
+				if(knot.star == 0){
+					knot.star = knot.star + u.rand 
+				}
+	                  if(knot.star == 2*pi){
+					knot.star = knot.star - u.rand 
+				}
+				knots.new = sort(c(knots, knot.star))
+				num.knot = min(which(knots.new == knot.star))
+				which.beta = min(max(round((num.knot/(J))*(J-4)),2),J-4)
+				beta.star = rnorm(1, mean = betas[which.beta], sd = .1)
+				betas.new = c(betas, 0)
+				for(i in 1:(J-4+1)){
+				if(i<which.beta){betas.new[i] = betas[i]}
+				if(i==which.beta){betas.new[i] = beta.star}
+				if(i>which.beta){betas.new[i] = betas[i-1]}
+				}
+				knots.temp = knots
+				knots = knots.new
+				r_betas = betas.new[2:(J-4+1)]
+				l_k = length(knots)
+				r_knots =  c(knots[1],knots[2],knots[4:l_k]) 
+				b = p.mcid(2*pi,r_knots,r_betas)
+				fix_beta = uniroot(solver, c(-1000000,1000000),tol = 0.0001)$root
+				betas.new = c(fix_beta, r_betas)
+				knots = knots.temp
+
+				
+				#acceptance prob
+				mix = 0
+				for(i in 1:(J-2)){
+					mix = mix + dnorm(knot.star,knots[i+1],1/J) 
+				}
+				
+				lr = lr_func(X,Y,Z,knots.new,betas.new, knots, betas, w=1)
+				#if(any(lr==0, is.infinite(lr))){
+				#print(c("move is", move,"lr is ",lr))
+				#}
+				d_J1 = .5*min(1, dpois(J-1+1,10)/dpois(J+1,10))
+				accept = min(lr*(d_J1/(b*(1/(J-2))*mix*dnorm(beta.star, betas[which.beta],sd = .1))),1)
+				
+				#accept birth step
+				if(all(runif(1)<accept,knots.new[4]==0, knots.new[J-3]==2*pi, sum(ifelse(knots.new == 0,1,0))<2, sum(ifelse(knots.new == 2*pi,1,0))<2)){		
+					J = J+1
+					betas = betas.new
+					knots = knots.new
+					bir = bir+1
+				} 
+
+			}
+		# Death
+			if(move[2] == 1){
+				
+				#determine location of death node and reset beta
+				j.star = min(max(round(runif(1)*(J-8)+4.5),4),J-4)
+				which.knot = knots[j.star]
+				knot.mix = 0
+				for(i in 1:(J-2)){
+					knot.mix = knot.mix + dnorm(which.knot,knots[1+i],1/J)
+				}
+				knot.mix = knot.mix / dnorm(which.knot,which.knot,1/J)
+				knots.new = 1:(J-1)
+				for(i in 1:(J-1)){
+					if(i<j.star){knots.new[i] = knots[i]}else{knots.new[i] = knots[i+1]}
+					
+				}
+				betas.new = 1:(J-1-4)
+				which.beta = min(max(round((j.star/J)*(J-4)),2),J-4)
+				if(which.beta>1){
+				for(i in 1:(which.beta-1)){
+					betas.new[i] = betas[i]
+				}}
+				if(which.beta<=(J-4-1)){
+				for(i in which.beta:(J-4-1)){
+					betas.new[i] = betas[i+1]
+				}}
+				mix = 0
+				for(i in 1:(J-4-1)){
+					mix = mix + dnorm(betas[which.beta], betas[which.beta], sd =.1) 
+				}
+				
+				
+				knots.temp = knots
+				knots = knots.new
+				r_betas = betas.new[2:(J-4-1)]
+				l_k = length(knots)
+				r_knots =  c(knots[1],knots[2],knots[4:l_k]) 
+				b = p.mcid(2*pi,r_knots,r_betas)
+				fix_beta = uniroot(solver, c(-1000000,1000000),tol = 0.0001)$root
+				betas.new = c(fix_beta, r_betas)
+				knots = knots.temp
+
+
+
+				lr = lr_func(X,Y,Z,knots,betas,knots.new, betas.new,w=1)
+				
+				
+				b_J1 = .5*min(1, dpois(J+1-1,10)/dpois(J-1,10))
+				accept = min((lr*(d/(b_J1*(1/(J-3))*knot.mix*(1/(J-3))*mix*(2^(J-4-1)))))^(-1),1)
+				
+				
+				#accept death step
+				if(all(runif(1)<accept,knots.new[4]==0, knots.new[J-3]==2*pi,sum(ifelse(knots.new == 0,1,0))<2, sum(ifelse(knots.new == 2*pi,1,0))<2)){		
+					J = J-1
+					betas = betas.new
+					knots = knots.new
+					dea = dea+1
+				} 
+			}
+
+		# Relocate
+			if(move[3] == 1){
+				#determine location of relocate node and reset beta
+				j.star = min(max(round(runif(1)*(J-6)+4.5),5),J-4)
+				which.knot = knots[j.star]
+				knot.star = min(max(rnorm(1,which.knot,1/J),0), 2*pi)
+				knots.new = sort(c(knots[-j.star], knot.star))
+				num.knot = which(knots.new == knot.star)
+				which.beta = min(max(round((num.knot/J)*(J-4)),2),J-4)
+				beta.star = rnorm(1, mean = betas[which.beta], sd = .1)
+				betas.new = betas
+				betas.new[which.beta]= beta.star
+
+				knots.temp = knots
+				knots = knots.new
+				r_betas = betas.new[2:(J-4)]
+				l_k = length(knots)
+				r_knots =  c(knots[1],knots[2],knots[4:l_k]) 
+				b = p.mcid(2*pi,r_knots,r_betas)
+				fix_beta = uniroot(solver, c(-1000000,1000000),tol = 0.0001)$root
+				betas.new = c(fix_beta, r_betas)
+				knots = knots.temp
+
+
+
+				lr = lr_func(X,Y,Z,knots.new,betas.new,knots,betas,w=1)
+				accept = min(lr*dnorm(beta.star,betas[which.beta], sd = .1),1)
+				#accept relocate step
+				
+				if(all(runif(1)<accept,knots.new[4]==0, knots.new[J-3]==2*pi, sum(ifelse(knots.new == 0,1,0))<2, sum(ifelse(knots.new == 2*pi,1,0))<2)){		
+				
+					J = J
+					betas = betas.new
+					knots = knots.new
+					rel = rel+1
+				} 
+
+
+			}
+
+
+
+	J_results[kx,1] = J
+	knots_results[kx,1:J] = knots
+	betas_results[kx,1:(J-4)] = betas
+
+print(kx)
+
+}
+
+# Function for plotting boundary estimate and credible bands
+
+GibbsEst = function(theta){
+	sum_coords = 0
+	var = 0
+	u_i = matrix(0,n.MCMC,1)
+	for(i in (n.burn+1):rx){
+		coords = p.mcid(theta,knots_results[i,1:J_results[i]],betas_results[i,1:(J_results[i]-4)])
+		sum_coords = sum_coords + coords
+	}
+	mean = sum_coords/n.MCMC
+	for(i in (n.burn+1):rx){
+		coords = p.mcid(theta,knots_results[i,1:J_results[i]],betas_results[i,1:(J_results[i]-4)])
+		var = var + (coords - mean)^2
+	}
+	var = var / n.MCMC
+	sd = var^.5
+	for(i in (n.burn+1):rx){
+		coords = p.mcid(theta,knots_results[i,1:J_results[i]],betas_results[i,1:(J_results[i]-4)])
+		u_i[i-n.burn,1] = (coords - mean)/sd
+	}
+	L0 = sort(u_i)[.95*length(u_i)]
+	lower = mean - L0*sd
+	upper = mean + L0*sd
+	x1 = mean * cos(theta)
+	y1 = mean * sin(theta)
+	lx1 = lower * cos(theta)
+	ly1 = lower * sin(theta)
+	ux1 = upper * cos(theta)
+	uy1 = upper * sin(theta)
+return(list(mean = mean, x = x1, y = y1, lx = lx1, ly = ly1, ux = ux1, uy = uy1))
+}
+
+
+# Plotting estimate and credible bands
+
+theta.plot = seq(from = 0, to = 2*pi, length.out = 200)
+Gm = matrix(0, length(theta.plot),2)
+Gl = matrix(0, length(theta.plot),2)
+Gu = matrix(0, length(theta.plot),2)
+for(i in 1:length(theta.plot)){
+	m = GibbsEst(theta.plot[i])
+	Gm[i,] = c(m$x, m$y)
+	Gl[i,] = c(m$lx, m$ly)
+	Gu[i,] = c(m$ux, m$uy)
+}
+my.radial = function(r, theta, ...){
+radial.plot(c(r[order(theta)]), c(theta[order(theta)]),
+rp.type = "p", show.grid.label = TRUE, radial.lim = c(0, 0.5),
+...)
+}
+rotate = function(x) t(apply(x, 2, rev)) # rotate closewise by 90 degrees
+par(mfrow = c(1, 2))
+# rotate & image it - square (asp = 1)
+image(rotate(obs), axes = FALSE, asp = 1,col = gray(seq(from =1, to = 0, by =- 0.01)))
+my.radial(gamma.fun(theta.plot), theta.plot, line.col = 1, lty = 1, lwd = 1, show.grid = FALSE)
+polygon(Gu[,1], Gu[,2],fillOddEven = TRUE, col = 'gray', border = NA)
+polygon(Gl[,1], Gl[,2],fillOddEven = TRUE, col = 'white', border = NA)
+my.radial(gamma.fun(theta.plot), theta.plot, line.col = 1, lty = 1, lwd = 1, show.grid = FALSE, add=TRUE)
+points(Gm[,1], Gm[,2], type = 'l', lty = 2)
+
+return(list(gamma.fun = gamma.fun, theta.plot = theta.plot, Gm = Gm, Gl = Gl, Gu = Gu))
+}
+
+
+
+# Examples from paper
+
+B1 = image.boundary(n.obs = 100, n.MCMC = 1000, n.burn = 1000, gamma.star = "ellipse", density.in = "bernoulli", density.out = "bernoulli", pi.in = .5, pi.out = .2)
+B2 = image.boundary(n.obs = 100, n.MCMC = 1000, n.burn = 1000, gamma.star = "triangle", density.in = "bernoulli", density.out = "bernoulli", pi.in = .5, pi.out = .2)
+B3 = image.boundary(n.obs = 500, n.MCMC = 1000, n.burn = 1000, gamma.star = "ellipse", density.in = "bernoulli", density.out = "bernoulli", pi.in = .25, pi.out = .2)
+B4 = image.boundary(n.obs = 500, n.MCMC = 1000, n.burn = 1000, gamma.star = "triangle", density.in = "bernoulli", density.out = "bernoulli", pi.in = .25, pi.out = .2)
+
+C1 = image.boundary(n.obs = 100, n.MCMC = 1000, n.burn = 1000, gamma.star = "ellipse", density.in = "normal", density.out = "normal", mu.in = 4, mu.out = 1, sd.in = 1.5, sd.out = 1)
+C2 = image.boundary(n.obs = 100, n.MCMC = 1000, n.burn = 1000, gamma.star = "triangle", density.in = "normal", density.out = "normal", mu.in = 4, mu.out = 1, sd.in = 1.5, sd.out = 1)
+C3 = image.boundary(n.obs = 100, n.MCMC = 1000, n.burn = 1000, gamma.star = "ellipse", density.in = "mixnorm", density.out = "mixnorm", mixnorm.in = c(.6,2,1.5,1,1), mixnorm.out = c(1,1,1,1,1))
+C4 = image.boundary(n.obs = 100, n.MCMC = 1000, n.burn = 1000, gamma.star = "ellipse", density.in = "t", density.out = "t", df.in = 3, df.out = 3, ncp.in = 1, ncp.out = 0)
+
