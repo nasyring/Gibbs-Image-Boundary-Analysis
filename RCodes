@@ -347,7 +347,7 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
 				accept = min(lr*(d_J1/(b*(1/(J-2))*mix*dnorm(beta.star, betas[which.beta],sd = .1))),1)
 				
 				#accept birth step
-				if(all(runif(1)<accept,knots.new[4]==0, knots.new[J-3]==2*pi, sum(ifelse(knots.new == 0,1,0))<2, sum(ifelse(knots.new == 2*pi,1,0))<2)){		
+				if(all(runif(1)<accept,knots.new[4]==0, knots.new[J+1-3]==2*pi, sum(ifelse(knots.new == 0,1,0))<2, sum(ifelse(knots.new == 2*pi,1,0))<2)){		
 					J = J+1
 					betas = betas.new
 					knots = knots.new
@@ -407,7 +407,7 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
 				
 				
 				#accept death step
-				if(all(runif(1)<accept,knots.new[4]==0, knots.new[J-3]==2*pi,sum(ifelse(knots.new == 0,1,0))<2, sum(ifelse(knots.new == 2*pi,1,0))<2)){		
+				if(all(runif(1)<accept,knots.new[4]==0, knots.new[J-1-3]==2*pi,sum(ifelse(knots.new == 0,1,0))<2, sum(ifelse(knots.new == 2*pi,1,0))<2)){		
 					J = J-1
 					betas = betas.new
 					knots = knots.new
