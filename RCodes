@@ -1,6 +1,6 @@
 ###########################################################################################
 # Author: Nick Syring
-# Contact: nasyring@ncsu.edu, https://github.com/nasyring
+# Contact: nasyrin@gmail.com, https://github.com/nasyring
 # Title: R codes for Posterior inference on the boundary of a noisy image via a Gibbs model
 ###########################################################################################
 
@@ -231,7 +231,7 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
     beta_prop = betas
     u <- rprop(betas[j])
     beta_prop[j] = u
-    r <- log(lr_func(X,Y,Z,knots,beta_prop,knots,betas,w=1)) + log(dprop(beta_prop[j] , u)) - log(dprop(u, beta_prop[j]))
+    r <- log(lr_func(X,Y,Z,knots,beta_prop,knots,betas,w=0.5)) + log(dprop(beta_prop[j] , u)) - log(dprop(u, beta_prop[j]))
     R <- min(exp(r), 1)
     if(runif(1) <= R) {
       betas = beta_prop
@@ -283,7 +283,7 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
     
     betas.new = matrix(0,J-5,1)
     for(i in 1:(J-5)){
-      betas.new[i,1] = mh_beta_i( i+1, dprop, rprop, 1, 1, X,Y,Z,knots,betas,w=1)
+      betas.new[i,1] = mh_beta_i( i+1, dprop, rprop, 1, 1, X,Y,Z,knots,betas,w=0.5)
     }
     r_betas = betas.new
     r_knots = c(knots[1],knots[2], knots[4:J])
@@ -339,7 +339,7 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
         mix = mix + dnorm(knot.star,knots[i+1],1/J) 
       }
       
-      lr = lr_func(X,Y,Z,knots.new,betas.new, knots, betas, w=1)
+      lr = lr_func(X,Y,Z,knots.new,betas.new, knots, betas, w=0.5)
       #if(any(lr==0, is.infinite(lr))){
       #print(c("move is", move,"lr is ",lr))
       #}
@@ -399,7 +399,7 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
       
       
       
-      lr = lr_func(X,Y,Z,knots,betas,knots.new, betas.new,w=1)
+      lr = lr_func(X,Y,Z,knots,betas,knots.new, betas.new,w=0.5)
       
       
       b_J1 = .5*min(1, dpois(J+1-1,10)/dpois(J-1,10))
@@ -440,7 +440,7 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
       
       
       
-      lr = lr_func(X,Y,Z,knots.new,betas.new,knots,betas,w=1)
+      lr = lr_func(X,Y,Z,knots.new,betas.new,knots,betas,w=0.5)
       accept = min(lr*dnorm(beta.star,betas[which.beta], sd = .1),1)
       #accept relocate step
       
@@ -467,7 +467,7 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
   
   # Function for plotting boundary estimate and credible bands
   
-  GibbsEst = function(theta){
+  GibbsEst_pointwise = function(theta){
     sum_coords = 0
     var = 0
     u_i = matrix(0,n.MCMC,1)
@@ -484,7 +484,7 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
     sd = var^.5
     for(i in (n.burn+1):rx){
       coords = p.mcid(theta,knots_results[i,1:J_results[i]],betas_results[i,1:(J_results[i]-4)])
-      u_i[i-n.burn,1] = (coords - mean)/sd
+      u_i[i-n.burn,1] = abs(coords - mean)/sd
     }
     L0 = sort(u_i)[.95*length(u_i)]
     lower = mean - L0*sd
@@ -498,30 +498,104 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
     return(list(mean = mean, x = x1, y = y1, lx = lx1, ly = ly1, ux = ux1, uy = uy1))
   }
   
+  GibbsEst_uniform = function(theta){
+    len_theta = length(theta)
+    L0_i = rep(0, n.MCMC)
+    mean = rep(0, len_theta)
+    sd = rep(0, len_theta)
+    lower  = rep(0, len_theta)
+    upper  = rep(0, len_theta)
+    x1 = rep(0, len_theta)
+    y1 = rep(0, len_theta)
+    lx1 = rep(0, len_theta)
+    ux1 = rep(0, len_theta)
+    ly1 = rep(0, len_theta)
+    uy1 = rep(0, len_theta)
+    u_it = matrix(0,n.MCMC,len_theta)
+    for(t in 1:len_theta){
+      sum_coords = 0
+      var = 0
+      for(i in (n.burn+1):rx){
+        coords = p.mcid(theta[t],knots_results[i,1:J_results[i]],betas_results[i,1:(J_results[i]-4)])
+        sum_coords = sum_coords + coords
+      }
+      mean[t] = sum_coords/n.MCMC
+      for(i in (n.burn+1):rx){
+        coords = p.mcid(theta[t],knots_results[i,1:J_results[i]],betas_results[i,1:(J_results[i]-4)])
+        var = var + (coords - mean[t])^2
+      }
+      var = var / n.MCMC
+      sd[t] = var^.5
+      for(i in (n.burn+1):rx){
+        coords = p.mcid(theta[t],knots_results[i,1:J_results[i]],betas_results[i,1:(J_results[i]-4)])
+        u_it[i-n.burn,t] = abs(coords - mean[t])/sd[t]
+      }
+      L0_i = apply(u_it, 1, max)
+    }
+    L0 = sort(L0_i)[round(0.95*n.MCMC)]
+    for(t in 1:len_theta){
+      lower[t] = mean[t] - L0*sd[t]
+      upper[t] = mean[t] + L0*sd[t]
+      x1[t] = mean[t] * cos(theta[t])
+      y1[t] = mean[t] * sin(theta[t])
+      lx1[t] = lower[t] * cos(theta[t])
+      ly1[t] = lower[t] * sin(theta[t])
+      ux1[t] = upper[t] * cos(theta[t])
+      uy1[t] = upper[t] * sin(theta[t])
+    }
+    return(list(L0 = L0, mean = mean, x = x1, y = y1, lx = lx1, ly = ly1, ux = ux1, uy = uy1))
+  }
+  
   
   # Plotting estimate and credible bands
+  
+  par(mfrow = c(1,2))
+  
+  # pointwise credible bands
   
   theta.plot = seq(from = 0.0, to = 2*pi, length.out = 200)
   Gm = matrix(0, length(theta.plot),2)
   Gl = matrix(0, length(theta.plot),2)
   Gu = matrix(0, length(theta.plot),2)
   for(i in 1:length(theta.plot)){
-    m = GibbsEst(theta.plot[i])
+    m = GibbsEst_pointwise(theta.plot[i])
     Gm[i,] = c(m$x, m$y)
     Gl[i,] = c(m$lx, m$ly)
     Gu[i,] = c(m$ux, m$uy)
   }
- 
   Xx = X*cos(Z)
   Yy = X*sin(Z)
   gray_colors = gray(seq(from=0, to=1, by = 0.01))
   plot(Xx,Yy, col = gray_colors[round(100*(Y-min(Y))/(max(Y)-min(Y)))], pch = 15, cex = 2, axes = F)
-  for( i in 1:199){
+  for( i in 1:(length(theta.plot)-1)){
     lines(c(gamma.fun(theta.plot[i])*cos(theta.plot[i]),gamma.fun(theta.plot[i+1])*cos(theta.plot[i+1])),c(gamma.fun(theta.plot[i])*sin(theta.plot[i]),gamma.fun(theta.plot[i+1])*sin(theta.plot[i+1])), col = 'green', lwd = 2)
     lines(c(Gm[i,1],Gm[i+1,1]),c(Gm[i,2],Gm[i+1,2]), col = 'blue', lwd = 2)
     lines(c(Gu[i,1],Gu[i+1,1]),c(Gu[i,2],Gu[i+1,2]), col = 'red', lwd = 2)
     lines(c(Gl[i,1],Gl[i+1,1]),c(Gl[i,2],Gl[i+1,2]), col = 'yellow', lwd = 2)
   }
+  
+  
+  # uniform credible bands
+  
+  theta.plot = seq(from = 0.0, to = 2*pi, length.out = 200)
+  Gm = matrix(0, length(theta.plot),2)
+  Gl = matrix(0, length(theta.plot),2)
+  Gu = matrix(0, length(theta.plot),2)
+  m = GibbsEst_uniform(theta.plot)
+  Gm = cbind(m$x, m$y)
+  Gl = cbind(m$lx, m$ly)
+  Gu = cbind(m$ux, m$uy)
+  Xx = X*cos(Z)
+  Yy = X*sin(Z)
+  gray_colors = gray(seq(from=0, to=1, by = 0.01))
+  plot(Xx,Yy, col = gray_colors[round(100*(Y-min(Y))/(max(Y)-min(Y)))], pch = 15, cex = 2, axes = F)
+  for( i in 1:(length(theta.plot)-1)){
+    lines(c(gamma.fun(theta.plot[i])*cos(theta.plot[i]),gamma.fun(theta.plot[i+1])*cos(theta.plot[i+1])),c(gamma.fun(theta.plot[i])*sin(theta.plot[i]),gamma.fun(theta.plot[i+1])*sin(theta.plot[i+1])), col = 'green', lwd = 2)
+    lines(c(Gm[i,1],Gm[i+1,1]),c(Gm[i,2],Gm[i+1,2]), col = 'blue', lwd = 2)
+    lines(c(Gu[i,1],Gu[i+1,1]),c(Gu[i,2],Gu[i+1,2]), col = 'red', lwd = 2)
+    lines(c(Gl[i,1],Gl[i+1,1]),c(Gl[i,2],Gl[i+1,2]), col = 'yellow', lwd = 2)
+  }
+  
   
   return(list(gamma.fun = gamma.fun, theta.plot = theta.plot, Gm = Gm, Gl = Gl, Gu = Gu))
 }
