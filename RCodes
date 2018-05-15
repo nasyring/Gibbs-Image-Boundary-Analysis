@@ -158,7 +158,7 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
       return(a-b)
     }
     b = p.mcid(2*pi,knots,as.vector(opter))
-    fix_beta = uniroot(solver, c(-1000000,1000000),tol = 0.0001)$root
+    fix_beta = uniroot(solver, c(-1000000,1000000),tol = 0.005)$root
     betas = c(fix_beta, as.vector(opter[2:(J-4)]))
     opt.r = p.mcid(Z,knots,betas)
     class = (X <= opt.r)
@@ -195,7 +195,7 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
         a = p.mcid(0,knots,c(fix_beta,as.vector(opter[2:(J-4)])))
         return(a-b)
       }
-      fix_beta = uniroot(solver, c(-1000000,1000000),tol = 0.0001)$root
+      fix_beta = uniroot(solver, c(-5,5),tol = 0.01)$root
       betas = c(fix_beta, as.vector(opter[2:(J-4)]))
       opt.r = p.mcid(Z,knots,betas)
       class = (X <= opt.r)
@@ -259,19 +259,20 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
   
   # Initial parameter values
   
-  solver = function(fix_beta){
-    a = p.mcid(0,knots,c(fix_beta,r_betas))
-    return(a-b)
-  }
+
   J = 18# number of knots
   inner_knots = c(0, 0.5711987, 1.1423973, 1.7135960, 2.2847947, 2.8559933, 3.4271920, 3.9983907, 4.5695893, 5.1407880, 5.7119866,2*pi)
-  outer_knots = c(-2,-1,-.5,2*pi+.5,2*pi+1, 2*pi+2) #fix an additional knot
+  outer_knots = c(-.02,-.01,-.005,2*pi+.5,2*pi+1, 2*pi+2) #fix an additional knot
   knots = c(outer_knots[1:3],inner_knots, outer_knots[4:6])
   r_knots = c(knots[1],knots[2], knots[4:J])
   betas = rep(.2,14)
   r_betas = rep(.2,13)
   b = p.mcid(2*pi,r_knots,r_betas)
-  fix_beta = uniroot(solver, c(-1000000,1000000),tol = 0.0001)$root
+  solver = function(fix_beta){
+    a = p.mcid(0,knots,c(fix_beta,r_betas))
+    return(a-b)
+  }
+  fix_beta = uniroot(solver, c(-10,10),tol = 0.01)$root
   betas = c(fix_beta, r_betas)
   bir = 0
   dea = 0
@@ -288,7 +289,11 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
     r_betas = betas.new
     r_knots = c(knots[1],knots[2], knots[4:J])
     b = p.mcid(2*pi,r_knots,r_betas)
-    fix_beta = uniroot(solver, c(-1000000,1000000),tol = 0.0001)$root
+    solver = function(fix_beta){
+      a = p.mcid(0,knots,c(fix_beta,r_betas))
+      return(a-b)
+    }
+    fix_beta = uniroot(solver, c(-10,10),tol = 0.01)$root
     betas = c(fix_beta, r_betas)
     
     # Birth, Death, and Relocate moves
@@ -305,7 +310,7 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
       #determine location of new node and reset beta
       j.star = round(runif(1)*(J-6)+3.5) 
       knot.star = min(max(rnorm(1,knots[j.star],1/J),0), 2*pi)
-      u.rand = runif(1,0,0.1)
+      u.rand = runif(1,0.01,0.1)
       if(knot.star == 0){
         knot.star = knot.star + u.rand 
       }
@@ -326,9 +331,13 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
       knots = knots.new
       r_betas = betas.new[2:(J-4+1)]
       l_k = length(knots)
-      r_knots =  c(knots[1],knots[2],knots[4:l_k]) 
+      r_knots =  c(knots[1],knots[2],knots[4:l_k])
       b = p.mcid(2*pi,r_knots,r_betas)
-      fix_beta = uniroot(solver, c(-1000000,1000000),tol = 0.0001)$root
+      solver = function(fix_beta){
+        a = p.mcid(0,knots,c(fix_beta,r_betas))
+        return(a-b)
+      } 
+      fix_beta = uniroot(solver, c(-10,10),tol = 0.01)$root
       betas.new = c(fix_beta, r_betas)
       knots = knots.temp
       
@@ -393,7 +402,11 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
       l_k = length(knots)
       r_knots =  c(knots[1],knots[2],knots[4:l_k]) 
       b = p.mcid(2*pi,r_knots,r_betas)
-      fix_beta = uniroot(solver, c(-1000000,1000000),tol = 0.0001)$root
+      solver = function(fix_beta){
+        a = p.mcid(0,knots,c(fix_beta,r_betas))
+        return(a-b)
+      } 
+      fix_beta = uniroot(solver, c(-10,10),tol = 0.01)$root
       betas.new = c(fix_beta, r_betas)
       knots = knots.temp
       
@@ -434,7 +447,11 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
       l_k = length(knots)
       r_knots =  c(knots[1],knots[2],knots[4:l_k]) 
       b = p.mcid(2*pi,r_knots,r_betas)
-      fix_beta = uniroot(solver, c(-1000000,1000000),tol = 0.0001)$root
+      solver = function(fix_beta){
+        a = p.mcid(0,knots,c(fix_beta,r_betas))
+        return(a-b)
+      } 
+      fix_beta = uniroot(solver, c(-3,3),tol = 0.01)$root
       betas.new = c(fix_beta, r_betas)
       knots = knots.temp
       
@@ -588,17 +605,21 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
   Xx = X*cos(Z)
   Yy = X*sin(Z)
   gray_colors = gray(seq(from=0, to=1, by = 0.01))
-  plot(Xx,Yy, col = gray_colors[round(100*(Y-min(Y))/(max(Y)-min(Y)))], pch = 15, cex = 2, axes = F)
+  par(mfrow = c(1,3))
+  plot(Xx,Yy, col = gray_colors[round(100*(Y-min(Y))/(max(Y)-min(Y)))+1], pch = '.', cex = 3, axes = F, xlab = '', ylab = '')
+  plot(Xx,Yy, col = 'white', pch = '.', cex = 3, axes = F, xlab = '', ylab = '')  
+  polygon(Gu[,1], Gu[,2], col = 'gray')
+  polygon(Gl[,1], Gl[,2], col = 'white')
   for( i in 1:(length(theta.plot)-1)){
-    lines(c(gamma.fun(theta.plot[i])*cos(theta.plot[i]),gamma.fun(theta.plot[i+1])*cos(theta.plot[i+1])),c(gamma.fun(theta.plot[i])*sin(theta.plot[i]),gamma.fun(theta.plot[i+1])*sin(theta.plot[i+1])), col = 'green', lwd = 2)
-    lines(c(Gm[i,1],Gm[i+1,1]),c(Gm[i,2],Gm[i+1,2]), col = 'blue', lwd = 2)
-    lines(c(Gu[i,1],Gu[i+1,1]),c(Gu[i,2],Gu[i+1,2]), col = 'red', lwd = 2)
-    lines(c(Gl[i,1],Gl[i+1,1]),c(Gl[i,2],Gl[i+1,2]), col = 'yellow', lwd = 2)
+    lines(c(gamma.fun(theta.plot[i])*cos(theta.plot[i]),gamma.fun(theta.plot[i+1])*cos(theta.plot[i+1])),c(gamma.fun(theta.plot[i])*sin(theta.plot[i]),gamma.fun(theta.plot[i+1])*sin(theta.plot[i+1])))
   }
+  points(Gm[,1], Gm[,2], pch = '.')
   
   
   return(list(gamma.fun = gamma.fun, theta.plot = theta.plot, Gm = Gm, Gl = Gl, Gu = Gu))
 }
+
+
 
 
 
@@ -613,4 +634,69 @@ C1 = image.boundary(n.obs = 100, n.MCMC = 1000, n.burn = 1000, gamma.star = "ell
 C2 = image.boundary(n.obs = 100, n.MCMC = 1000, n.burn = 1000, gamma.star = "triangle", density.in = "normal", density.out = "normal", mu.in = 4, mu.out = 1, sd.in = 1.5, sd.out = 1)
 C3 = image.boundary(n.obs = 100, n.MCMC = 1000, n.burn = 1000, gamma.star = "ellipse", density.in = "mixnorm", density.out = "mixnorm", mixnorm.in = c(.6,2,1.5,1,1), mixnorm.out = c(1,1,1,1,1))
 C4 = image.boundary(n.obs = 100, n.MCMC = 1000, n.burn = 1000, gamma.star = "ellipse", density.in = "t", density.out = "t", df.in = 3, df.out = 3, ncp.in = 1, ncp.out = 0)
+
+## BayesBD
+
+#B1
+
+bin.obs = par2obs(m = 100, pi.in = 0.6, pi.out = 0.4, design = 'J', gamma.fun, center = c(0.5, 0.5))
+bin.obs$intensity = obs
+bin.obs$theta.obs = theta.obs
+bin.obs$r.obs = r.obs
+bin.obs$center = c(.5,.5)
+bin.obs$x = r.obs*cos(theta.obs)
+bin.obs$y = r.obs*sin(theta.obs)
+
+bin.samples = fitBinImage(bin.obs, NULL,NULL, NULL, 4000, 1000, 10, "I", NULL, FALSE, FALSE)
+
+plot(Xx,Yy, col = 'white', pch = '.', cex = 3, axes = F, xlab = '', ylab = '')  
+polygon(bin.samples$output$upper*cos(bin.samples$output$theta), bin.samples$output$upper*sin(bin.samples$output$theta), col = 'gray')
+polygon(bin.samples$output$lower*cos(bin.samples$output$theta), bin.samples$output$lower*sin(bin.samples$output$theta), col = 'white')
+for( i in 1:(length(theta.plot)-1)){
+  lines(c(gamma.fun(theta.plot[i])*cos(theta.plot[i]),gamma.fun(theta.plot[i+1])*cos(theta.plot[i+1])),c(gamma.fun(theta.plot[i])*sin(theta.plot[i]),gamma.fun(theta.plot[i+1])*sin(theta.plot[i+1])))
+}
+points(bin.samples$output$estimate*cos(bin.samples$output$theta), bin.samples$output$estimate*sin(bin.samples$output$theta), pch = '.')
+
+
+#B2
+
+
+bin.obs = par2obs(m = 100, pi.in = 0.6, pi.out = 0.4, design = 'J', gamma.fun, center = c(0.5, 0.5))
+bin.obs$intensity = obs
+bin.obs$theta.obs = theta.obs
+bin.obs$r.obs = r.obs
+bin.obs$center = c(.5,.5)
+bin.obs$x = r.obs*cos(theta.obs)
+bin.obs$y = r.obs*sin(theta.obs)
+
+bin.samples = fitBinImage(bin.obs, NULL,NULL, NULL, 4000, 1000, 10, "I", NULL, FALSE, FALSE)
+
+plot(Xx,Yy, col = 'white', pch = '.', cex = 3, axes = F, xlab = '', ylab = '')  
+polygon(bin.samples$output$upper*cos(bin.samples$output$theta), bin.samples$output$upper*sin(bin.samples$output$theta), col = 'gray')
+polygon(bin.samples$output$lower*cos(bin.samples$output$theta), bin.samples$output$lower*sin(bin.samples$output$theta), col = 'white')
+for( i in 1:(length(theta.plot)-1)){
+  lines(c(gamma.fun(theta.plot[i])*cos(theta.plot[i]),gamma.fun(theta.plot[i+1])*cos(theta.plot[i+1])),c(gamma.fun(theta.plot[i])*sin(theta.plot[i]),gamma.fun(theta.plot[i+1])*sin(theta.plot[i+1])))
+}
+points(bin.samples$output$estimate*cos(bin.samples$output$theta), bin.samples$output$estimate*sin(bin.samples$output$theta), pch = '.')
+
+#C2
+
+bin.obs = par2obs(m = 100, pi.in = 0.6, pi.out = 0.4, design = 'J', gamma.fun, center = c(0.5, 0.5))
+bin.obs$intensity = obs
+bin.obs$theta.obs = theta.obs
+bin.obs$r.obs = r.obs
+bin.obs$center = c(.5,.5)
+bin.obs$x = r.obs*cos(theta.obs)
+bin.obs$y = r.obs*sin(theta.obs)
+
+bin.samples = fitContImage(bin.obs, NULL,NULL, NULL, 4000, 1000, 10, "I","I", NULL, FALSE, FALSE)
+
+plot(Xx,Yy, col = 'white', pch = '.', cex = 3, axes = F, xlab = '', ylab = '')  
+polygon(bin.samples$output$upper*cos(bin.samples$output$theta), bin.samples$output$upper*sin(bin.samples$output$theta), col = 'gray')
+polygon(bin.samples$output$lower*cos(bin.samples$output$theta), bin.samples$output$lower*sin(bin.samples$output$theta), col = 'white')
+for( i in 1:(length(theta.plot)-1)){
+  lines(c(gamma.fun(theta.plot[i])*cos(theta.plot[i]),gamma.fun(theta.plot[i+1])*cos(theta.plot[i+1])),c(gamma.fun(theta.plot[i])*sin(theta.plot[i]),gamma.fun(theta.plot[i+1])*sin(theta.plot[i+1])))
+}
+points(bin.samples$output$estimate*cos(bin.samples$output$theta), bin.samples$output$estimate*sin(bin.samples$output$theta), pch = '.')
+
 
