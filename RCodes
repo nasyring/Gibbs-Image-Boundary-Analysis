@@ -144,15 +144,16 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
   if(all(density.in == "bernoulli", density.out == "bernoulli")){
     k=1
     J = 18# number of knots
-    inner_knots = c(0, 0.5711987, 1.1423973, 1.7135960, 2.2847947, 2.8559933, 3.4271920, 3.9983907, 4.5695893, 5.1407880, 5.7119866,2*pi)
-    outer_knots = c(-2,-1,-.5,2*pi+.5,2*pi+1, 2*pi+2) #fix an additional knot
-    knots = c(outer_knots[1:3],inner_knots, outer_knots[4:6])
-    r_knots = c(knots[1],knots[2], knots[4:J])
+    inner_knots = seq(from = 0.02, to = 2*pi-0.02, length.out = 14)
+    outer_knots = c(-1, -0.5,-.25,0,0.01,2*pi-0.01,2*pi, 2*pi+0.25, 2*pi+0.5, 2*pi+1) #fix an additional knot
+    knots = c(outer_knots[1:5],inner_knots, outer_knots[6:10])
+    r_knots = c(outer_knots[1:2], inner_knots, knots[J-1], outer_knots[5:6])
     loss <- function(betas){
       l = k*sum(as.vector(ifelse(Y==1,1,0))*as.vector(ifelse(X>p.mcid(Z,knots,betas),1,0))) + sum(as.vector(ifelse(Y == 0,1,0))*as.vector(ifelse(X<p.mcid(Z,knots,betas),1,0))) 
       return(l)
     }  
     opter = constrOptim(matrix(rep(.35,14),14,1), loss,grad = NULL, ui=diag(1,14,14), ci=0)$par
+    len_opter = length(opter)
     solver = function(fix_beta){
       a = p.mcid(0,knots,c(fix_beta,as.vector(opter[2:(J-4)])))
       return(a-b)
@@ -259,21 +260,28 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
   
   # Initial parameter values
   
-
-  J = 18# number of knots
-  inner_knots = c(0, 0.5711987, 1.1423973, 1.7135960, 2.2847947, 2.8559933, 3.4271920, 3.9983907, 4.5695893, 5.1407880, 5.7119866,2*pi)
-  outer_knots = c(-.02,-.01,-.005,2*pi+.5,2*pi+1, 2*pi+2) #fix an additional knot
-  knots = c(outer_knots[1:3],inner_knots, outer_knots[4:6])
-  r_knots = c(knots[1],knots[2], knots[4:J])
-  betas = rep(.2,14)
-  r_betas = rep(.2,13)
-  b = p.mcid(2*pi,r_knots,r_betas)
-  solver = function(fix_beta){
-    a = p.mcid(0,knots,c(fix_beta,r_betas))
-    return(a-b)
+  
+  J = 20# number of knots
+  inner_knots = seq(from = 0.02, to = 2*pi-0.02, length.out = 10)
+  outer_knots = c(-1, -0.5,-.25,0,0.01,2*pi-0.01,2*pi, 2*pi+0.25, 2*pi+0.5, 2*pi+1) #fix an additional knot
+  knots = c(outer_knots[1:5],inner_knots, outer_knots[6:10])
+  sub_knots = c(outer_knots[1:4], inner_knots, outer_knots[7:10])
+  sub_betas = rep(.2,J-4-2)
+  outer_betas = rep(.2,2)
+  betas = c(outer_betas[1], sub_betas, outer_betas[2])
+  zero_sub = p.mcid(0,sub_knots,sub_betas)
+  two_pi_sub = p.mcid(2*pi,sub_knots,sub_betas)
+  solver_zero = function(fix_beta){
+    a = p.mcid(0,knots[1:(J-1)],c(fix_beta,sub_betas))
+    return((a-two_pi_sub)-((zero_sub - two_pi_sub)/2))
   }
-  fix_beta = uniroot(solver, c(-10,10),tol = 0.01)$root
-  betas = c(fix_beta, r_betas)
+  solver_two_pi = function(fix_beta){
+    a = p.mcid(2*pi,knots[2:J],c(sub_betas, fix_beta))
+    return(((zero_sub-two_pi_sub)/2)-(zero_sub - a))
+  }
+  fix_beta_zero = uniroot(solver_zero, c(-1000,1000),tol = 0.01)$root
+  fix_beta_two_pi = uniroot(solver_two_pi, c(-1000,1000),tol = 0.01)$root
+  betas = c(fix_beta_zero, sub_betas, fix_beta_two_pi)
   bir = 0
   dea = 0
   rel = 0		
@@ -606,7 +614,7 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
   Yy = X*sin(Z)
   gray_colors = gray(seq(from=0, to=1, by = 0.01))
   par(mfrow = c(1,3))
-  plot(Xx,Yy, col = gray_colors[round(100*(Y-min(Y))/(max(Y)-min(Y)))+1], pch = '.', cex = 3, axes = F, xlab = '', ylab = '')
+  plot(Xx,Yy, col = gray_colors[round(100*(Y-min(Y))/(max(Y)-min(Y)))+1], pch = '.', cex = 4, axes = F, xlab = '', ylab = '')
   plot(Xx,Yy, col = 'white', pch = '.', cex = 3, axes = F, xlab = '', ylab = '')  
   polygon(Gu[,1], Gu[,2], col = 'gray')
   polygon(Gl[,1], Gl[,2], col = 'white')
@@ -626,7 +634,7 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
 # Examples from paper
 
 B1 = image.boundary(n.obs = 100, n.MCMC = 1000, n.burn = 1000, gamma.star = "ellipse", density.in = "bernoulli", density.out = "bernoulli", pi.in = .5, pi.out = .2)
-B2 = image.boundary(n.obs = 100, n.MCMC = 1000, n.burn = 1000, gamma.star = "triangle", density.in = "bernoulli", density.out = "bernoulli", pi.in = .5, pi.out = .2)
+B2 = image.boundary(n.obs = 100, n.MCMC = 4000, n.burn = 1000, gamma.star = "triangle", density.in = "bernoulli", density.out = "bernoulli", pi.in = .5, pi.out = .2)
 B3 = image.boundary(n.obs = 500, n.MCMC = 1000, n.burn = 1000, gamma.star = "ellipse", density.in = "bernoulli", density.out = "bernoulli", pi.in = .25, pi.out = .2)
 B4 = image.boundary(n.obs = 500, n.MCMC = 1000, n.burn = 1000, gamma.star = "triangle", density.in = "bernoulli", density.out = "bernoulli", pi.in = .25, pi.out = .2)
 
@@ -698,5 +706,4 @@ for( i in 1:(length(theta.plot)-1)){
   lines(c(gamma.fun(theta.plot[i])*cos(theta.plot[i]),gamma.fun(theta.plot[i+1])*cos(theta.plot[i+1])),c(gamma.fun(theta.plot[i])*sin(theta.plot[i]),gamma.fun(theta.plot[i+1])*sin(theta.plot[i+1])))
 }
 points(bin.samples$output$estimate*cos(bin.samples$output$theta), bin.samples$output$estimate*sin(bin.samples$output$theta), pch = '.')
-
 
