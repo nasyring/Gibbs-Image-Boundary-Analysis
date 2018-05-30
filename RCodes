@@ -9,7 +9,7 @@
 #		1. Install and load the packages below: splines, plotrix, BayesBD.
 #		   Note, works with the 0.1 version of BayesBD by Meng Li, xylimeng@gmail.com. 
 #		2. Load the functions triangle2 and image.boundary into R.
-#	  3. Examples from the paper are ready to run below, after the code for the 
+#	      3. Examples from the paper are ready to run below, after the code for the 
 #		   image.boundary function.
 #
 
@@ -259,27 +259,20 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
   
   # Initial parameter values
   
-  
   J = 18# number of knots
   inner_knots = seq(from = 0.1, to = 2*pi-0.1, length.out = 10)
-  outer_knots = c(-4, -3,-2,-1.5,2*pi+1.5, 2*pi+2, 2*pi+3, 2*pi+4) #fix an additional knot
+  outer_knots = c(-4, -3,-2,-1.5,2*pi+.5, 2*pi+1, 2*pi+1.5, 2*pi+2) #fix an additional knot
   knots = c(outer_knots[1:4],inner_knots, outer_knots[5:8])
-  outer_betas = rep(.2,2)
-  inner_betas = runif(J-4-2,0.1,0.4)
-  betas = c(outer_betas[1], inner_betas, outer_betas[2])
-  zero_sub = p.mcid(0,knots,betas)
+  fixed_beta = 0.2
+  variable_betas = runif(J-4-1,0.1,0.4)
+  betas = c(fixed_beta, variable_betas)
   two_pi_sub = p.mcid(2*pi,knots,betas)
   solver_zero = function(fix_beta){
     a = p.mcid(0,knots,c(fix_beta,betas[2:length(betas)]))
-    return((a-two_pi_sub)-((zero_sub - two_pi_sub)/2))
+    return(a - two_pi_sub)
   }
-  solver_two_pi = function(fix_beta){
-    a = p.mcid(2*pi,knots,c(betas[1:(length(betas)-1)], fix_beta))
-    return(((zero_sub-two_pi_sub)/2)-(zero_sub - a))
-  }
-  fix_beta_zero = uniroot(solver_zero, c(-10000,10000),tol = 0.01)$root
-  fix_beta_two_pi = uniroot(solver_two_pi, c(-10000,10000),tol = 0.01)$root
-  betas = c(fix_beta_zero, inner_betas, fix_beta_two_pi)
+  fix_beta_zero = uniroot(solver_zero, c(-1000000000,1000000000),tol = 0.01)$root
+  betas = c(fix_beta_zero, variable_betas)
   bir = 0
   dea = 0
   rel = 0		
@@ -291,26 +284,172 @@ image.boundary = function(n.obs = 100, n.MCMC, n.burn, gamma.star = "ellipse", d
     betas.new = rep(0,J-4)
     betas.new[1] = betas[1]
     betas.new[J-4] = betas[J-4]
-    for(i in 2:(J-5)){
+    for(i in 2:(J-4)){
       betas.new[i] = mh_beta_i( i, dprop, rprop, 1, 1, X,Y,Z,knots,betas,w=1)
     }
-    zero_sub = p.mcid(0,knots,betas.new)
     two_pi_sub = p.mcid(2*pi,knots,betas.new)
     solver_zero = function(fix_beta){
-      a = p.mcid(0,knots,c(fix_beta,betas.new[2:(J-4)]))
-      return((a-two_pi_sub)-((zero_sub - two_pi_sub)/2))
+      a = p.mcid(0,knots,c(fix_beta,betas.new[2:length(betas.new)]))
+      return(a - two_pi_sub)
     }
-    solver_two_pi = function(fix_beta){
-      a = p.mcid(2*pi,knots,c(betas.new[1:(J-4-1)], fix_beta))
-      return(((zero_sub-two_pi_sub)/2)-(zero_sub - a))
+    fix_beta_zero = uniroot(solver_zero, c(-100000000,100000000),tol = 0.01)$root
+    betas = c(fix_beta_zero, betas.new[2:(J-4)])
+
+
+# Birth, Death, and Relocate moves
+    
+    # Use a Poisson prior for J with mean of mu
+    mu = 18
+    b = .5*min(1, dpois(J+1,mu)/dpois(J,mu))
+    d = .5*min(1, dpois(J-1,mu)/dpois(J,mu))
+    r = max(1-b-d,0)
+    move = rmultinom(1,1,c(b,d,r))
+    
+    # Birth
+    if(move[1] == 1){
+      
+      #determine location of new node and reset beta
+      j.star = sample.int((J-8),1)+4
+      knot.star = min(max(rnorm(1,knots[j.star],1/J),0), 2*pi)
+      u.rand = runif(1,0.01,0.05)
+      if(knot.star == 0){
+        knot.star = knot.star + u.rand 
+      }
+      if(knot.star == 2*pi){
+        knot.star = knot.star - u.rand 
+      }
+      knots.new = sort(c(knots, knot.star))
+      num.knot = min(which(knots.new == knot.star))
+      which.beta = min(max(round((num.knot/(J))*(J-4)),2),J-4-1)
+      beta.star = rnorm(1, mean = betas[which.beta], sd = .1)
+      betas.new = c(betas, 0)
+      for(i in 1:(J-4+1)){
+        if(i<which.beta){betas.new[i] = betas[i]}
+        if(i==which.beta){betas.new[i] = beta.star}
+        if(i>which.beta){betas.new[i] = betas[i-1]}
+      }
+      knots.temp = knots
+      knots = knots.new
+	two_pi_sub = p.mcid(2*pi,knots,betas.new)
+      solver_zero = function(fix_beta){
+        a = p.mcid(0,knots,c(fix_beta,betas.new[2:length(betas.new)]))
+        return(a - two_pi_sub)
+      }
+      fix_beta_zero = uniroot(solver_zero, c(-100000000,100000000),tol = 0.01)$root
+      betas.new = c(fix_beta_zero, betas.new[2:(J-4+1)])
+      knots = knots.temp
+      
+      
+      #acceptance prob
+      mix = 0
+      for(i in 1:(J-2)){
+        mix = mix + dnorm(knot.star,knots[i+1],1/J) 
+      }
+      
+      lr = lr_func(X,Y,Z,knots.new,betas.new, knots, betas, w=1)
+      d_J1 = .5*min(1, dpois(J-1+1,mu)/dpois(J+1,mu))
+      accept = min(lr*(d_J1/(b*(1/(J-2))*mix*dnorm(beta.star, betas[which.beta],sd = .1))),1)
+      
+      #accept birth step
+      if(all(runif(1)<accept)){		
+        J = J+1
+        betas = betas.new
+        knots = knots.new
+        bir = bir+1
+      } 
+      
     }
-    fix_beta_zero = uniroot(solver_zero, c(-10000,10000),tol = 0.01)$root
-    fix_beta_two_pi = uniroot(solver_two_pi, c(-10000,10000),tol = 0.01)$root
-    betas = c(fix_beta_zero, betas.new[2:(length(betas.new)-1)], fix_beta_two_pi)
-    #################
+    # Death
+    if(move[2] == 1){
+      
+      #determine location of death node and reset beta
+      j.star = sample.int((J-8),1)+4
+      which.knot = knots[j.star]
+      knot.mix = 0
+      for(i in 1:(J-2)){
+        knot.mix = knot.mix + dnorm(which.knot,knots[1+i],1/J)
+      }
+      knot.mix = knot.mix / dnorm(which.knot,which.knot,1/J)
+      knots.new = 1:(J-1)
+      for(i in 1:(J-1)){
+        if(i<j.star){knots.new[i] = knots[i]}else{knots.new[i] = knots[i+1]}
+      }
+      betas.new = 1:(J-1-4)
+      which.beta = min(max(round((j.star/J)*(J-4)),2),J-4)
+      if(which.beta>1){
+        for(i in 1:(which.beta-1)){
+          betas.new[i] = betas[i]
+        }}
+      if(which.beta<=(J-4-1)){
+        for(i in which.beta:(J-4-1)){
+          betas.new[i] = betas[i+1]
+        }}
+      mix = 0
+      for(i in 1:(J-4-1)){
+        mix = mix + dnorm(betas[which.beta], betas[which.beta], sd =.1) 
+      }
+      
+      
+      knots.temp = knots
+      knots = knots.new
+	two_pi_sub = p.mcid(2*pi,knots,betas.new)
+      solver_zero = function(fix_beta){
+        a = p.mcid(0,knots,c(fix_beta,betas.new[2:length(betas.new)]))
+        return(a - two_pi_sub)
+      }
+      fix_beta_zero = uniroot(solver_zero, c(-100000000,100000000),tol = 0.01)$root
+      betas.new = c(fix_beta_zero, betas.new[2:length(betas.new)])
+      knots = knots.temp
+      lr = lr_func(X,Y,Z,knots,betas,knots.new, betas.new,w=1)
+      b_J1 = .5*min(1, dpois(J+1-1,mu)/dpois(J-1,mu))
+      accept = min((lr*(d/(b_J1*(1/(J-3))*knot.mix*(1/(J-3))*mix*(2^(J-4-1)))))^(-1),1)
+      
+	#accept death step
+      if(all(runif(1)<accept)){		
+        J = J-1
+        betas = betas.new
+        knots = knots.new
+        dea = dea+1
+      } 
+    }
     
-    
-    #################
+    # Relocate
+    if(move[3] == 1){
+      #determine location of relocate node and reset beta
+      j.star = sample.int((J-8),1)+4
+      which.knot = knots[j.star]
+      knot.star = min(max(rnorm(1,which.knot,1/J),0+0.02), 2*pi-0.02)
+      knots.new = sort(c(knots[-j.star], knot.star))
+      num.knot = which(knots.new == knot.star)
+      which.beta = min(max(round((num.knot/J)*(J-4)),2),J-4)
+      beta.star = rnorm(1, mean = betas[which.beta], sd = .1)
+      betas.new = betas
+      betas.new[which.beta]= beta.star
+      knots.temp = knots
+      knots = knots.new
+	two_pi_sub = p.mcid(2*pi,knots,betas.new)
+      solver_zero = function(fix_beta){
+        a = p.mcid(0,knots,c(fix_beta,betas.new[2:length(betas.new)]))
+        return(a - two_pi_sub)
+      }
+      fix_beta_zero = uniroot(solver_zero, c(-100000000,100000000),tol = 0.01)$root
+      betas.new = c(fix_beta_zero, betas.new[2:length(betas.new)])
+      knots = knots.temp
+      
+      lr = lr_func(X,Y,Z,knots.new,betas.new,knots,betas,w=1)
+      accept = min(lr*dnorm(beta.star,betas[which.beta], sd = .1),1)
+      #accept relocate step
+      
+      if(all(runif(1)<accept)){		
+        J = J
+        betas = betas.new
+        knots = knots.new
+        rel = rel+1
+      } 
+      
+      
+    }
+
     
     
     J_results[kx,1] = J
